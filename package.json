@@ -7,27 +7,32 @@
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "nodemon server.js",
     "client": "cd client && npm start",
-    "build": "cd client && npm run build",
+    "build": "cd client && npm install && npm run build",
     "start": "node server.js",
-    "install-client": "cd client && npm install"
+    "install-client": "cd client && npm install",
+    "heroku-postbuild": "cd client && npm install && npm run build",
+    "deploy": "npm run build && npm start"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "mongoose": "^7.5.0",
+    "connect-mongo": "^5.1.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "multer": "^1.4.5-lts.1",
-    "pdf-parse": "^1.1.1",
-    "officegen": "^0.6.5",
-    "mammoth": "^1.6.0",
-    "groq-sdk": "^0.3.3",
-    "pdfkit": "^0.13.0",
+    "express": "^4.18.2",
+    "express-session": "^1.18.2",
     "fs-extra": "^11.1.1",
-    "path": "^0.12.7"
+    "groq-sdk": "^0.3.3",
+    "mammoth": "^1.6.0",
+    "mongoose": "^7.5.0",
+    "multer": "^1.4.5-lts.1",
+    "officegen": "^0.6.5",
+    "path": "^0.12.7",
+    "pdf-parse": "^1.1.1",
+    "pdfkit": "^0.13.0",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1",
-    "concurrently": "^8.2.0"
+    "concurrently": "^8.2.0",
+    "nodemon": "^3.0.1"
   },
   "keywords": [
     "mern",

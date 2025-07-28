@@ -102,6 +102,11 @@ const evaluationSchema = new mongoose.Schema({
     max: 10,
     required: true
   },
+  sessionId: {
+    type: String,
+    required: true,
+    index: true // Add index for faster queries
+  },
   createdAt: {
     type: Date,
     default: Date.now

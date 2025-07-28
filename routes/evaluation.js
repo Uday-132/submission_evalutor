@@ -335,7 +335,7 @@ router.post('/evaluate', async (req, res) => {
     // Get evaluation from Groq AI
     const evaluationResult = await evaluateSubmission(extractedText);
 
-    // Save evaluation to database
+    // Save evaluation to database with session-based privacy
     const evaluation = new Evaluation({
       filename: filename,
       originalName: originalName,
@@ -352,7 +352,8 @@ router.post('/evaluate', async (req, res) => {
       improvementSuggestions: evaluationResult.improvement_suggestions,
       recommendedResources: evaluationResult.recommended_resources,
       visualQualityComment: evaluationResult.visual_quality_comment,
-      pitchReadinessScore: evaluationResult.pitch_readiness_score
+      pitchReadinessScore: evaluationResult.pitch_readiness_score,
+      sessionId: req.session.userId // Add session ID for privacy
     });
 
     const savedEvaluation = await evaluation.save();
@@ -370,7 +371,7 @@ router.post('/evaluate', async (req, res) => {
   }
 });
 
-// Generate PDF report endpoint
+// Generate PDF report endpoint (session-based privacy)
 router.post('/generate-report', async (req, res) => {
   try {
     const { evaluationId } = req.body;
@@ -379,9 +380,14 @@ router.post('/generate-report', async (req, res) => {
       return res.status(400).json({ error: 'Evaluation ID is required' });
     }
 
-    const evaluation = await Evaluation.findById(evaluationId);
+    // Only allow PDF generation for evaluations belonging to current user's session
+    const evaluation = await Evaluation.findOne({ 
+      _id: evaluationId, 
+      sessionId: req.session.userId 
+    });
+    
     if (!evaluation) {
-      return res.status(404).json({ error: 'Evaluation not found' });
+      return res.status(404).json({ error: 'Evaluation not found or access denied' });
     }
 
     const pdfBuffer = await generatePDFReport(evaluation, evaluation.originalName);
@@ -398,17 +404,19 @@ router.post('/generate-report', async (req, res) => {
   }
 });
 
-// Get all evaluations
+// Get all evaluations (session-based privacy)
 router.get('/history', async (req, res) => {
   try {
-    const evaluations = await Evaluation.find()
+    // Only fetch evaluations for the current user's session
+    const evaluations = await Evaluation.find({ sessionId: req.session.userId })
       .select('-extractedText') // Exclude large text field
       .sort({ createdAt: -1 })
       .limit(50);
 
     res.json({
       success: true,
-      evaluations: evaluations
+      evaluations: evaluations,
+      sessionId: req.session.userId.substring(0, 8) + '...' // For debugging
     });
 
   } catch (error) {
@@ -419,13 +427,17 @@ router.get('/history', async (req, res) => {
   }
 });
 
-// Get specific evaluation
+// Get specific evaluation (session-based privacy)
 router.get('/:id', async (req, res) => {
   try {
-    const evaluation = await Evaluation.findById(req.params.id);
+    // Only fetch evaluation if it belongs to the current user's session
+    const evaluation = await Evaluation.findOne({ 
+      _id: req.params.id, 
+      sessionId: req.session.userId 
+    });
     
     if (!evaluation) {
-      return res.status(404).json({ error: 'Evaluation not found' });
+      return res.status(404).json({ error: 'Evaluation not found or access denied' });
     }
 
     res.json({
