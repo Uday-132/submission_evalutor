@@ -1,5 +1,5 @@
 import React from 'react';
-import { Brain, Sparkles, Zap } from 'lucide-react';
+import { Sparkles, Zap } from 'lucide-react';
 
 const LoadingSpinner = ({ message = "AI is Processing...", subtitle = "Please wait while we analyze your submission" }) => {
   return (

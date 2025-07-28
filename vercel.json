@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "name": "submission-evaluator",
   "builds": [
     {
       "src": "server.js",
@@ -26,10 +25,5 @@
   ],
   "env": {
     "NODE_ENV": "production"
-  },
-  "functions": {
-    "server.js": {
-      "maxDuration": 30
-    }
   }
 }
