@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs-extra');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
+const { formatErrorResponse, getRandomEncouragement } = require('../utils/errorMessages');
 
 const router = express.Router();
 
@@ -77,7 +78,8 @@ async function extractTextFromPPTX(filePath) {
 router.post('/', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+      return res.status(400).json(formatErrorResponse('invalidFileType', 
+        "📁 Oops! Looks like your file got lost in cyberspace. Please select a file and try uploading again!", 400));
     }
 
     const filePath = req.file.path;
@@ -91,11 +93,21 @@ router.post('/', upload.single('file'), async (req, res) => {
     } else if (fileExtension === '.pptx' || fileExtension === '.ppt') {
       extractedText = await extractTextFromPPTX(filePath);
     } else {
-      return res.status(400).json({ error: 'Unsupported file type' });
+      // Clean up the unsupported file
+      fs.unlink(filePath, (err) => {
+        if (err) console.error('Error deleting unsupported file:', err);
+      });
+      return res.status(400).json(formatErrorResponse('invalidFileType', 
+        `🎭 "${req.file.originalname}" looks interesting, but our AI only speaks PDF and PowerPoint! Please upload a .pdf, .ppt, or .pptx file.`, 400));
     }
 
     if (!extractedText || extractedText.trim().length === 0) {
-      return res.status(400).json({ error: 'No text could be extracted from the file' });
+      // Clean up the file with no extractable text
+      fs.unlink(filePath, (err) => {
+        if (err) console.error('Error deleting empty file:', err);
+      });
+      return res.status(400).json(formatErrorResponse('extractionFailed', 
+        `🔍 Your file "${req.file.originalname}" uploaded successfully, but our text detective couldn't find any readable content! Make sure your PDF has selectable text or your PowerPoint has text content.`, 400));
     }
 
     // Calculate extraction statistics
@@ -116,7 +128,9 @@ router.post('/', upload.single('file'), async (req, res) => {
       filename: req.file.filename,
       originalName: req.file.originalname,
       extractedText: extractedText,
-      extractionStats: extractionStats
+      extractionStats: extractionStats,
+      message: `🎉 Successfully extracted ${extractionStats.wordCount} words from "${req.file.originalname}"! Ready for AI evaluation.`,
+      encouragement: getRandomEncouragement()
     });
 
   } catch (error) {
@@ -129,9 +143,29 @@ router.post('/', upload.single('file'), async (req, res) => {
       });
     }
     
-    res.status(500).json({ 
-      error: error.message || 'Failed to process file' 
-    });
+    // 🎭 Handle different error types with personality
+    if (error.message.includes('File too large') || error.message.includes('LIMIT_FILE_SIZE')) {
+      return res.status(413).json(formatErrorResponse('fileTooBig', null, 413));
+    }
+    
+    if (error.message.includes('Only PDF and PowerPoint files are allowed')) {
+      return res.status(400).json(formatErrorResponse('invalidFileType', 
+        `🎭 That file type is not on our VIP list! We only accept PDF and PowerPoint files for evaluation.`, 400));
+    }
+    
+    if (error.message.includes('PDF') || error.message.includes('pdf')) {
+      return res.status(500).json(formatErrorResponse('extractionFailed', 
+        `📄 Our PDF reader had trouble with your file! ${getRandomEncouragement()}`, 500));
+    }
+    
+    if (error.message.includes('PowerPoint') || error.message.includes('PPTX') || error.message.includes('pptx')) {
+      return res.status(500).json(formatErrorResponse('extractionFailed', 
+        `📊 Our PowerPoint parser encountered a challenge! ${getRandomEncouragement()}`, 500));
+    }
+    
+    // Default fun error
+    return res.status(500).json(formatErrorResponse('unexpectedError', 
+      `🎪 Something unexpected happened during file processing! ${getRandomEncouragement()}`));
   }
 });
 

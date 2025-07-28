@@ -4,6 +4,7 @@ const Evaluation = require('../models/Evaluation');
 const PDFDocument = require('pdfkit');
 const fs = require('fs-extra');
 const path = require('path');
+const { formatErrorResponse, getRandomEncouragement } = require('../utils/errorMessages');
 
 const router = express.Router();
 
@@ -328,8 +329,16 @@ router.post('/evaluate', async (req, res) => {
   try {
     const { extractedText, filename, originalName, extractionStats } = req.body;
 
+    // 🎯 Check for missing fields with style
     if (!extractedText || !filename) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      return res.status(400).json(formatErrorResponse('invalidFileType', 
+        "🤔 Hmm, looks like some important info got lost in transit! We need both the file content and filename to work our magic.", 400));
+    }
+
+    // 📏 Check content length
+    if (extractedText.trim().length < 100) {
+      return res.status(400).json(formatErrorResponse('contentTooShort', 
+        `📏 Your submission is ${extractedText.trim().length} characters - that's like a tweet! Our AI needs at least 100 characters to provide meaningful feedback.`, 400));
     }
 
     // Get evaluation from Groq AI
@@ -360,14 +369,33 @@ router.post('/evaluate', async (req, res) => {
 
     res.json({
       success: true,
-      evaluation: savedEvaluation
+      evaluation: savedEvaluation,
+      encouragement: getRandomEncouragement() // Add some motivation!
     });
 
   } catch (error) {
     console.error('Evaluation error:', error);
-    res.status(500).json({ 
-      error: error.message || 'Failed to evaluate submission' 
-    });
+    
+    // 🎭 Handle different error types with personality
+    if (error.message.includes('INVALID_CONTENT_TYPE')) {
+      return res.status(400).json(formatErrorResponse('notBusinessContent', null, 400));
+    }
+    
+    if (error.message.includes('API key')) {
+      return res.status(500).json(formatErrorResponse('invalidApiKey'));
+    }
+    
+    if (error.message.includes('network') || error.message.includes('timeout')) {
+      return res.status(503).json(formatErrorResponse('networkError', null, 503));
+    }
+    
+    if (error.message.includes('database') || error.message.includes('mongo')) {
+      return res.status(503).json(formatErrorResponse('databaseError', null, 503));
+    }
+    
+    // Default fun error
+    return res.status(500).json(formatErrorResponse('groqApiError', 
+      `🤖 Our AI had a brain freeze while analyzing your brilliant submission! ${getRandomEncouragement()}`));
   }
 });
 
@@ -377,7 +405,8 @@ router.post('/generate-report', async (req, res) => {
     const { evaluationId } = req.body;
 
     if (!evaluationId) {
-      return res.status(400).json({ error: 'Evaluation ID is required' });
+      return res.status(400).json(formatErrorResponse('evaluationNotFound', 
+        "🕵️ Which evaluation should I turn into a PDF? You forgot to tell me the evaluation ID!", 400));
     }
 
     // Only allow PDF generation for evaluations belonging to current user's session
@@ -387,7 +416,8 @@ router.post('/generate-report', async (req, res) => {
     });
     
     if (!evaluation) {
-      return res.status(404).json({ error: 'Evaluation not found or access denied' });
+      return res.status(404).json(formatErrorResponse('accessDenied', 
+        "🚫 That evaluation is in someone else's secret vault! Only the original creator can generate PDFs.", 404));
     }
 
     const pdfBuffer = await generatePDFReport(evaluation, evaluation.originalName);
@@ -398,9 +428,15 @@ router.post('/generate-report', async (req, res) => {
 
   } catch (error) {
     console.error('PDF generation error:', error);
-    res.status(500).json({ 
-      error: error.message || 'Failed to generate PDF report' 
-    });
+    
+    // 🎨 Handle PDF generation errors with style
+    if (error.message.includes('PDF') || error.message.includes('document')) {
+      return res.status(500).json(formatErrorResponse('pdfGenerationError', 
+        `📄 Our PDF printer had an artistic disagreement with your evaluation! ${getRandomEncouragement()}`));
+    }
+    
+    return res.status(500).json(formatErrorResponse('unexpectedError', 
+      `🎪 Something unexpected happened while creating your PDF masterpiece! ${getRandomEncouragement()}`));
   }
 });
 
@@ -416,14 +452,27 @@ router.get('/history', async (req, res) => {
     res.json({
       success: true,
       evaluations: evaluations,
-      sessionId: req.session.userId.substring(0, 8) + '...' // For debugging
+      sessionId: req.session.userId.substring(0, 8) + '...', // For debugging
+      message: evaluations.length === 0 ? 
+        "🌟 Your evaluation journey starts here! Upload your first submission to see it in history." :
+        `📚 Found ${evaluations.length} evaluation${evaluations.length === 1 ? '' : 's'} in your personal vault!`
     });
 
   } catch (error) {
     console.error('History fetch error:', error);
-    res.status(500).json({ 
-      error: error.message || 'Failed to fetch evaluation history' 
-    });
+    
+    // 🗄️ Handle database errors with style
+    if (error.message.includes('database') || error.message.includes('mongo')) {
+      return res.status(503).json(formatErrorResponse('databaseError', 
+        `🗄️ Our history vault is doing some maintenance! ${getRandomEncouragement()}`, 503));
+    }
+    
+    if (error.message.includes('session')) {
+      return res.status(401).json(formatErrorResponse('sessionExpired', null, 401));
+    }
+    
+    return res.status(500).json(formatErrorResponse('unexpectedError', 
+      `🎪 Something went wonky while fetching your evaluation history! ${getRandomEncouragement()}`));
   }
 });
 
@@ -437,19 +486,36 @@ router.get('/:id', async (req, res) => {
     });
     
     if (!evaluation) {
-      return res.status(404).json({ error: 'Evaluation not found or access denied' });
+      return res.status(404).json(formatErrorResponse('evaluationNotFound', 
+        "🕵️ That evaluation has vanished into thin air! Either it doesn't exist or it belongs to someone else's secret collection.", 404));
     }
 
     res.json({
       success: true,
-      evaluation: evaluation
+      evaluation: evaluation,
+      message: `✨ Found your evaluation for "${evaluation.originalName}"! Here are all the juicy details.`
     });
 
   } catch (error) {
     console.error('Evaluation fetch error:', error);
-    res.status(500).json({ 
-      error: error.message || 'Failed to fetch evaluation' 
-    });
+    
+    // 🎭 Handle different error types with personality
+    if (error.message.includes('database') || error.message.includes('mongo')) {
+      return res.status(503).json(formatErrorResponse('databaseError', 
+        `🗄️ Our evaluation vault is having a moment! ${getRandomEncouragement()}`, 503));
+    }
+    
+    if (error.message.includes('session')) {
+      return res.status(401).json(formatErrorResponse('sessionExpired', null, 401));
+    }
+    
+    if (error.message.includes('ObjectId') || error.message.includes('Cast to ObjectId')) {
+      return res.status(400).json(formatErrorResponse('evaluationNotFound', 
+        "🤔 That evaluation ID looks a bit scrambled! Make sure you're using the correct link.", 400));
+    }
+    
+    return res.status(500).json(formatErrorResponse('unexpectedError', 
+      `🎪 Something mysterious happened while fetching your evaluation! ${getRandomEncouragement()}`));
   }
 });
 
