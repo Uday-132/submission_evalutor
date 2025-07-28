@@ -8,16 +8,18 @@ const { formatErrorResponse, getRandomEncouragement } = require('../utils/errorM
 
 const router = express.Router();
 
-// Configure multer
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/');
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Configure multer (Vercel-compatible)
+const storage = process.env.NODE_ENV === 'production' 
+  ? multer.memoryStorage() // Use memory storage for Vercel
+  : multer.diskStorage({   // Use disk storage for local development
+      destination: (req, file, cb) => {
+        cb(null, 'uploads/');
+      },
+      filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+      }
+    });
 
 const upload = multer({
   storage: storage,
@@ -39,10 +41,11 @@ const upload = multer({
   }
 });
 
-// Enhanced PDF text extraction
-async function extractTextFromPDF(filePath) {
+// Enhanced PDF text extraction (Vercel-compatible)
+async function extractTextFromPDF(fileBuffer, filePath = null) {
   try {
-    const dataBuffer = fs.readFileSync(filePath);
+    // Use buffer if available (Vercel), otherwise read from file path (local)
+    const dataBuffer = fileBuffer || fs.readFileSync(filePath);
     const data = await pdfParse(dataBuffer);
     return data.text;
   } catch (error) {
@@ -51,19 +54,23 @@ async function extractTextFromPDF(filePath) {
   }
 }
 
-// Enhanced PowerPoint text extraction
-async function extractTextFromPPTX(filePath) {
+// Enhanced PowerPoint text extraction (Vercel-compatible)
+async function extractTextFromPPTX(fileBuffer, filePath = null) {
   try {
-    // For PPTX files, we'll use a simplified approach
-    // In a production environment, you might want to use a more robust library
-    const result = await mammoth.extractRawText({ path: filePath });
-    return result.value;
+    // Use buffer if available (Vercel), otherwise use file path (local)
+    if (fileBuffer) {
+      const result = await mammoth.extractRawText({ buffer: fileBuffer });
+      return result.value;
+    } else {
+      const result = await mammoth.extractRawText({ path: filePath });
+      return result.value;
+    }
   } catch (error) {
     console.error('PPTX extraction error:', error);
     
     // Fallback: try to read as text (limited functionality)
     try {
-      const buffer = fs.readFileSync(filePath);
+      const buffer = fileBuffer || fs.readFileSync(filePath);
       // This is a very basic extraction - in production, use a proper PPTX parser
       const text = buffer.toString('utf8').replace(/[^\x20-\x7E]/g, ' ');
       const cleanText = text.match(/[a-zA-Z0-9\s.,!?;:'"()-]+/g);
@@ -82,30 +89,35 @@ router.post('/', upload.single('file'), async (req, res) => {
         "📁 Oops! Looks like your file got lost in cyberspace. Please select a file and try uploading again!", 400));
     }
 
-    const filePath = req.file.path;
+    const filePath = req.file.path; // Available in local development
+    const fileBuffer = req.file.buffer; // Available in Vercel (memory storage)
     const fileExtension = path.extname(req.file.originalname).toLowerCase();
     
     let extractedText = '';
     
-    // Extract text based on file type
+    // Extract text based on file type (Vercel-compatible)
     if (fileExtension === '.pdf') {
-      extractedText = await extractTextFromPDF(filePath);
+      extractedText = await extractTextFromPDF(fileBuffer, filePath);
     } else if (fileExtension === '.pptx' || fileExtension === '.ppt') {
-      extractedText = await extractTextFromPPTX(filePath);
+      extractedText = await extractTextFromPPTX(fileBuffer, filePath);
     } else {
-      // Clean up the unsupported file
-      fs.unlink(filePath, (err) => {
-        if (err) console.error('Error deleting unsupported file:', err);
-      });
+      // Clean up the unsupported file (only if using disk storage)
+      if (filePath) {
+        fs.unlink(filePath, (err) => {
+          if (err) console.error('Error deleting unsupported file:', err);
+        });
+      }
       return res.status(400).json(formatErrorResponse('invalidFileType', 
         `🎭 "${req.file.originalname}" looks interesting, but our AI only speaks PDF and PowerPoint! Please upload a .pdf, .ppt, or .pptx file.`, 400));
     }
 
     if (!extractedText || extractedText.trim().length === 0) {
-      // Clean up the file with no extractable text
-      fs.unlink(filePath, (err) => {
-        if (err) console.error('Error deleting empty file:', err);
-      });
+      // Clean up the file with no extractable text (only if using disk storage)
+      if (filePath) {
+        fs.unlink(filePath, (err) => {
+          if (err) console.error('Error deleting empty file:', err);
+        });
+      }
       return res.status(400).json(formatErrorResponse('extractionFailed', 
         `🔍 Your file "${req.file.originalname}" uploaded successfully, but our text detective couldn't find any readable content! Make sure your PDF has selectable text or your PowerPoint has text content.`, 400));
     }
@@ -118,10 +130,12 @@ router.post('/', upload.single('file'), async (req, res) => {
       lineCount: extractedText.split('\n').length
     };
 
-    // Clean up the uploaded file after extraction
-    fs.unlink(filePath, (err) => {
-      if (err) console.error('Error deleting uploaded file:', err);
-    });
+    // Clean up the uploaded file after extraction (only if using disk storage)
+    if (filePath) {
+      fs.unlink(filePath, (err) => {
+        if (err) console.error('Error deleting uploaded file:', err);
+      });
+    }
 
     res.json({
       success: true,
