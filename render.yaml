@@ -3,8 +3,8 @@ services:
     name: submission-evaluator
     env: node
     plan: free
-    buildCommand: chmod +x build.sh && ./build.sh
-    startCommand: npm start
+    buildCommand: npm install && cd client && npm install && npm run build && cd ..
+    startCommand: node server.js
     envVars:
       - key: NODE_ENV
         value: production
