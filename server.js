@@ -1,12 +1,10 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs-extra');
 const session = require('express-session');
-const MongoStore = require('connect-mongo');
 const { v4: uuidv4 } = require('uuid');
 
 // Load environment variables
@@ -25,20 +23,15 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Session middleware for user privacy
+// Simple session middleware (no database required)
 app.use(session({
   secret: process.env.SESSION_SECRET || 'submission-evaluator-secret-key-change-in-production',
   resave: false,
   saveUninitialized: true,
-  store: MongoStore.create({
-    mongoUrl: process.env.MONGODB_URI || 'mongodb://localhost:27017/submission-evaluator',
-    touchAfter: 24 * 3600, // lazy session update
-    autoRemove: 'native' // Let MongoDB handle expired sessions
-  }),
   cookie: { 
     secure: process.env.NODE_ENV === 'production', // HTTPS only in production
     httpOnly: true,
-    maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 }));
 
@@ -86,73 +79,15 @@ const upload = multer({
   }
 });
 
-// MongoDB connection with better error handling
-const connectDB = async () => {
-  try {
-    const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/submission-evaluator';
-    
-    // Log connection attempt (hide password in logs)
-    const logURI = mongoURI.includes('@') 
-      ? mongoURI.replace(/:([^:@]{8})[^:@]*@/, ':****@')
-      : mongoURI;
-    console.log(`🔄 Connecting to MongoDB: ${logURI}`);
-    
-    await mongoose.connect(mongoURI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-    
-    console.log('✅ Connected to MongoDB successfully');
-    
-    // Log database info
-    const dbName = mongoose.connection.db.databaseName;
-    const isAtlas = mongoURI.includes('mongodb+srv://');
-    console.log(`📊 Database: ${dbName} ${isAtlas ? '(MongoDB Atlas - Cloud)' : '(Local)'}`);
-    
-  } catch (error) {
-    console.error('❌ MongoDB connection failed:', error.message);
-    
-    if (process.env.NODE_ENV === 'production') {
-      console.log('🚨 Production deployment requires working database connection');
-      console.log('💡 Solutions for production:');
-      console.log('   1. Set up MongoDB Atlas: https://www.mongodb.com/atlas');
-      console.log('   2. Update MONGODB_URI environment variable');
-      console.log('   3. Check network access settings in MongoDB Atlas');
-      process.exit(1); // Exit in production if DB fails
-    } else {
-      console.log('💡 Development solutions:');
-      console.log('   1. Install and start MongoDB locally: https://docs.mongodb.com/manual/installation/');
-      console.log('   2. Use MongoDB Atlas (cloud): https://www.mongodb.com/atlas');
-      console.log('   3. Update MONGODB_URI in your .env file');
-      console.log('⚠️  Server will continue without database (evaluations won\'t be saved)');
-    }
-  }
-};
-
-// Connect to database
-connectDB();
-
 // Import routes
 const evaluationRoutes = require('./routes/evaluation');
 const uploadRoutes = require('./routes/upload');
 
-// Check if MongoDB is connected
-const isMongoConnected = () => mongoose.connection.readyState === 1;
-
-// Middleware to check database connection
-const checkDB = (req, res, next) => {
-  if (!isMongoConnected() && (req.path.includes('/history') || req.path.includes('/generate-report'))) {
-    return res.status(503).json({
-      error: 'Database not available. Please set up MongoDB to use this feature.',
-      suggestion: 'Check setup-mongodb.md for installation instructions'
-    });
-  }
-  next();
-};
-
-// Routes
-app.use('/api/evaluation', checkDB, evaluationRoutes);
+// Routes (no database required)
+app.use('/api/evaluation', evaluationRoutes);
 app.use('/api/upload', uploadRoutes);
+
+console.log('🚀 Server starting without database - evaluations will be processed in real-time only');
 
 // Serve static files from React build
 if (process.env.NODE_ENV === 'production') {

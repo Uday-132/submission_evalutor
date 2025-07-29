@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, History, Upload, Moon, Sun, Sparkles } from 'lucide-react';
+import { FileText, Upload, Moon, Sun, Sparkles } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 
 const Header = ({ currentView, onNewEvaluation, onViewHistory, onBackToUpload }) => {
@@ -41,18 +41,6 @@ const Header = ({ currentView, onNewEvaluation, onViewHistory, onBackToUpload })
               >
                 <Upload className="h-4 w-4" />
                 <span className="font-medium">Upload</span>
-              </button>
-
-              <button
-                onClick={onViewHistory}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-300 transform hover:scale-105 ${
-                  currentView === 'history'
-                    ? 'bg-blue-500 text-white shadow-lg scale-105'
-                    : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-white dark:hover:bg-gray-700'
-                }`}
-              >
-                <History className="h-4 w-4" />
-                <span className="font-medium">History</span>
               </button>
             </div>
 

@@ -1,6 +1,5 @@
 const express = require('express');
 const Groq = require('groq-sdk');
-const Evaluation = require('../models/Evaluation');
 const PDFDocument = require('pdfkit');
 const fs = require('fs-extra');
 const path = require('path');
@@ -324,7 +323,7 @@ function generatePDFReport(evaluationData, filename) {
   });
 }
 
-// Evaluate submission endpoint
+// Evaluate submission endpoint (no database - real-time only)
 router.post('/evaluate', async (req, res) => {
   try {
     const { extractedText, filename, originalName, extractionStats } = req.body;
@@ -344,8 +343,9 @@ router.post('/evaluate', async (req, res) => {
     // Get evaluation from Groq AI
     const evaluationResult = await evaluateSubmission(extractedText);
 
-    // Save evaluation to database with session-based privacy
-    const evaluation = new Evaluation({
+    // Create evaluation object (no database save - just return results)
+    const evaluation = {
+      id: Date.now().toString(), // Simple ID for PDF generation
       filename: filename,
       originalName: originalName,
       extractedText: extractedText,
@@ -362,15 +362,20 @@ router.post('/evaluate', async (req, res) => {
       recommendedResources: evaluationResult.recommended_resources,
       visualQualityComment: evaluationResult.visual_quality_comment,
       pitchReadinessScore: evaluationResult.pitch_readiness_score,
-      sessionId: req.session.userId // Add session ID for privacy
-    });
+      createdAt: new Date().toISOString()
+    };
 
-    const savedEvaluation = await evaluation.save();
+    // Store in session for PDF generation (temporary storage)
+    if (!req.session.currentEvaluation) {
+      req.session.currentEvaluation = {};
+    }
+    req.session.currentEvaluation = evaluation;
 
     res.json({
       success: true,
-      evaluation: savedEvaluation,
-      encouragement: getRandomEncouragement() // Add some motivation!
+      evaluation: evaluation,
+      encouragement: getRandomEncouragement(), // Add some motivation!
+      message: "🎉 Evaluation completed! Results are ready for viewing and PDF download."
     });
 
   } catch (error) {
@@ -389,35 +394,21 @@ router.post('/evaluate', async (req, res) => {
       return res.status(503).json(formatErrorResponse('networkError', null, 503));
     }
     
-    if (error.message.includes('database') || error.message.includes('mongo')) {
-      return res.status(503).json(formatErrorResponse('databaseError', null, 503));
-    }
-    
     // Default fun error
     return res.status(500).json(formatErrorResponse('groqApiError', 
       `🤖 Our AI had a brain freeze while analyzing your brilliant submission! ${getRandomEncouragement()}`));
   }
 });
 
-// Generate PDF report endpoint (session-based privacy)
+// Generate PDF report endpoint (session-based - no database)
 router.post('/generate-report', async (req, res) => {
   try {
-    const { evaluationId } = req.body;
-
-    if (!evaluationId) {
-      return res.status(400).json(formatErrorResponse('evaluationNotFound', 
-        "🕵️ Which evaluation should I turn into a PDF? You forgot to tell me the evaluation ID!", 400));
-    }
-
-    // Only allow PDF generation for evaluations belonging to current user's session
-    const evaluation = await Evaluation.findOne({ 
-      _id: evaluationId, 
-      sessionId: req.session.userId 
-    });
+    // Get evaluation from session (stored temporarily)
+    const evaluation = req.session.currentEvaluation;
     
     if (!evaluation) {
-      return res.status(404).json(formatErrorResponse('accessDenied', 
-        "🚫 That evaluation is in someone else's secret vault! Only the original creator can generate PDFs.", 404));
+      return res.status(404).json(formatErrorResponse('evaluationNotFound', 
+        "🕵️ No recent evaluation found! Please complete an evaluation first, then generate the PDF.", 404));
     }
 
     const pdfBuffer = await generatePDFReport(evaluation, evaluation.originalName);
@@ -440,83 +431,13 @@ router.post('/generate-report', async (req, res) => {
   }
 });
 
-// Get all evaluations (session-based privacy)
+// History endpoint - disabled (no database)
 router.get('/history', async (req, res) => {
-  try {
-    // Only fetch evaluations for the current user's session
-    const evaluations = await Evaluation.find({ sessionId: req.session.userId })
-      .select('-extractedText') // Exclude large text field
-      .sort({ createdAt: -1 })
-      .limit(50);
-
-    res.json({
-      success: true,
-      evaluations: evaluations,
-      sessionId: req.session.userId.substring(0, 8) + '...', // For debugging
-      message: evaluations.length === 0 ? 
-        "🌟 Your evaluation journey starts here! Upload your first submission to see it in history." :
-        `📚 Found ${evaluations.length} evaluation${evaluations.length === 1 ? '' : 's'} in your personal vault!`
-    });
-
-  } catch (error) {
-    console.error('History fetch error:', error);
-    
-    // 🗄️ Handle database errors with style
-    if (error.message.includes('database') || error.message.includes('mongo')) {
-      return res.status(503).json(formatErrorResponse('databaseError', 
-        `🗄️ Our history vault is doing some maintenance! ${getRandomEncouragement()}`, 503));
-    }
-    
-    if (error.message.includes('session')) {
-      return res.status(401).json(formatErrorResponse('sessionExpired', null, 401));
-    }
-    
-    return res.status(500).json(formatErrorResponse('unexpectedError', 
-      `🎪 Something went wonky while fetching your evaluation history! ${getRandomEncouragement()}`));
-  }
-});
-
-// Get specific evaluation (session-based privacy)
-router.get('/:id', async (req, res) => {
-  try {
-    // Only fetch evaluation if it belongs to the current user's session
-    const evaluation = await Evaluation.findOne({ 
-      _id: req.params.id, 
-      sessionId: req.session.userId 
-    });
-    
-    if (!evaluation) {
-      return res.status(404).json(formatErrorResponse('evaluationNotFound', 
-        "🕵️ That evaluation has vanished into thin air! Either it doesn't exist or it belongs to someone else's secret collection.", 404));
-    }
-
-    res.json({
-      success: true,
-      evaluation: evaluation,
-      message: `✨ Found your evaluation for "${evaluation.originalName}"! Here are all the juicy details.`
-    });
-
-  } catch (error) {
-    console.error('Evaluation fetch error:', error);
-    
-    // 🎭 Handle different error types with personality
-    if (error.message.includes('database') || error.message.includes('mongo')) {
-      return res.status(503).json(formatErrorResponse('databaseError', 
-        `🗄️ Our evaluation vault is having a moment! ${getRandomEncouragement()}`, 503));
-    }
-    
-    if (error.message.includes('session')) {
-      return res.status(401).json(formatErrorResponse('sessionExpired', null, 401));
-    }
-    
-    if (error.message.includes('ObjectId') || error.message.includes('Cast to ObjectId')) {
-      return res.status(400).json(formatErrorResponse('evaluationNotFound', 
-        "🤔 That evaluation ID looks a bit scrambled! Make sure you're using the correct link.", 400));
-    }
-    
-    return res.status(500).json(formatErrorResponse('unexpectedError', 
-      `🎪 Something mysterious happened while fetching your evaluation! ${getRandomEncouragement()}`));
-  }
+  res.json({
+    success: true,
+    evaluations: [],
+    message: "📝 History feature is disabled in this version. Each evaluation is processed in real-time without storage. Complete an evaluation to get instant results and PDF download!"
+  });
 });
 
 module.exports = router;

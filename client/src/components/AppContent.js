@@ -4,7 +4,6 @@ import { useTheme } from '../contexts/ThemeContext';
 import Header from './Header';
 import FileUpload from './FileUpload';
 import EvaluationResults from './EvaluationResults';
-import EvaluationHistory from './EvaluationHistory';
 import LoadingSpinner from './LoadingSpinner';
 import Particles from './Particles';
 
@@ -38,10 +37,6 @@ function AppContent() {
     setExtractedData(null);
     setEvaluationData(null);
     setCurrentView('upload');
-  };
-
-  const handleViewHistory = () => {
-    setCurrentView('history');
   };
 
   const handleBackToUpload = () => {
@@ -170,7 +165,6 @@ function AppContent() {
         <Header 
           currentView={currentView}
           onNewEvaluation={handleNewEvaluation}
-          onViewHistory={handleViewHistory}
           onBackToUpload={handleBackToUpload}
         />
 
@@ -225,11 +219,7 @@ function AppContent() {
             </div>
           )}
 
-          {currentView === 'history' && (
-            <div className="fade-in relative z-10">
-              <EvaluationHistory />
-            </div>
-          )}
+
         </main>
 
         <footer className="bg-white/60 dark:bg-gray-900/60 backdrop-blur-md border-t border-white/30 dark:border-gray-700/50 mt-16 transition-all duration-300">
