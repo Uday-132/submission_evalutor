@@ -3,11 +3,13 @@ services:
     name: submission-evaluator
     env: node
     plan: free
-    buildCommand: npm install && cd client && npm install && npm run build && cd ..
-    startCommand: node server.js
+    buildCommand: npm install --production && cd client && npm install && npm run build
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: "18"
       - key: MONGODB_URI
         sync: false
       - key: GROQ_API_KEY
