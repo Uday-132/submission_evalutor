@@ -10,8 +10,6 @@ services:
         value: production
       - key: NODE_VERSION
         value: "18"
-      - key: MONGODB_URI
-        sync: false
       - key: GROQ_API_KEY
         sync: false
       - key: SESSION_SECRET
